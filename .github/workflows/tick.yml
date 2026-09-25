@@ -1,0 +1,88 @@
+name: tick
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"        # Telegram taps are picked up within ~15 min
+  workflow_dispatch:
+    inputs:
+      command:
+        description: What to run
+        type: choice
+        options: ["tick", "tick --discover", "doctor"]
+        default: "tick"
+
+permissions:
+  contents: write      # push the data branch (state + generated images)
+  actions: write       # keep the schedule from being auto-disabled
+
+concurrency:
+  group: retro-state   # one run at a time: state.json is a single file
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -q -r requirements.txt
+
+      - name: Check out data branch
+        env:
+          REMOTE: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+        run: |
+          git config --global user.name "retro-bot"
+          git config --global user.email "retro-bot@users.noreply.github.com"
+          set +e; git ls-remote --exit-code --heads origin data >/dev/null 2>&1; rc=$?; set -e
+          if [ "$rc" = 0 ]; then
+            git clone -q --depth 1 --branch data "$REMOTE" data
+          elif [ "$rc" = 2 ]; then   # branch genuinely doesn't exist yet (first run)
+            mkdir data && cd data && git init -q -b data && git remote add origin "$REMOTE"
+          else
+            echo "Can't reach the data branch (rc=$rc); stopping so state isn't overwritten"; exit 1
+          fi
+
+      - name: Run
+        env:
+          RETRO_DATA_DIR: data
+          DATA_BRANCH: data
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_OWNER_ID: ${{ secrets.TELEGRAM_OWNER_ID }}
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+        run: python -m retro ${{ inputs.command || 'tick' }}
+
+      - name: Save state + media
+        if: always() && hashFiles('data/state.json') != ''
+        run: |
+          cd data
+          git add -A
+          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
+          # single-commit branch: amend + force push so repo size never grows with old images
+          git commit -q --amend -m "state" 2>/dev/null || git commit -q -m "state"
+          git push -q -f origin HEAD:data
+
+      - name: Keep schedule alive
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tick.yml/enable" >/dev/null || true

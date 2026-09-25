@@ -1,0 +1,66 @@
+# Retro Gunners pipeline config. Secrets live in env vars / GitHub secrets, never here.
+
+brand:
+  name: "Highbury Prints"            # shown in captions; rename freely
+  hashtags: "#Arsenal #COYG #Gunners #FootballArt"
+  credit: "Original photo: Arsenal FC / Getty Images. Fan-made illustration, not affiliated with Arsenal FC."
+
+timezone: "Europe/London"
+
+sources:
+  arsenal_web:
+    enabled: true
+    lookback_hours: 72                # only galleries published in this window
+    max_articles: 60                  # how many recent articles to scan per discovery
+    gallery_keywords: ["photos", "gallery", "match gallery", "training gallery", "inside training"]
+  telegram_inbox:
+    enabled: true                     # photos you send the bot get queued at top priority
+
+curation:
+  scorer: openai                      # openai | heuristic
+  model: "gpt-5-mini"                 # any vision-capable chat model
+  min_score: 7                        # 1-10
+  avoid_repeat_subject_last_n: 2      # don't feature the same player twice in a row
+  max_scored_per_run: 36              # cost guard
+
+style:
+  provider: openai                    # openai | gemini | local (local = free offline test filter)
+  prompt_file: styles/mcm_geo.txt
+  wallpaper_prompt_file: styles/wallpaper_recompose.txt
+  providers:
+    openai:
+      model: "gpt-image-2"
+      quality: "high"                 # low | medium | high
+      # Extra form fields passed to /v1/images/edits. Unsupported ones are dropped automatically.
+      extra: {}
+    gemini:
+      model: "gemini-2.5-flash-image"
+
+output:
+  art_long_edge: 2048                 # "original format" export, same aspect ratio as the source photo
+  wallpaper_size: [1290, 2796]        # modern iPhone; also fine on most Android phones
+  story_size: [1080, 1920]
+  feed_width: 1080                    # Instagram feed (aspect clamped to 4:5 .. 1.91:1 with paper margins)
+  paper_color: [236, 228, 211]        # off-white margin colour used when padding
+  jpeg_quality: 92
+
+review:
+  mode: telegram                      # telegram = one-tap approve (nothing posts without you) | auto
+
+schedule:
+  max_generations_per_day: 6          # paid image calls per rolling 24h (incl. redos + wallpaper recompositions). ~$0.2 each at high quality
+  pending_review_target: 2            # keep this many items waiting for your approval
+  discovery_every_hours: 2
+  posts_per_day: 3
+  post_slots: ["08:30", "13:00", "19:30"]   # local to `timezone`
+  min_gap_hours: 3
+  quiet_hours: [23, 7]                # no posting between these local hours
+
+publish:
+  instagram: { feed: true, story_wallpaper: true }
+  threads: { enabled: true }
+  x: { enabled: true }
+
+hosting:
+  backend: github                     # github (public raw URLs from the data branch) | r2
+  keep_media_days: 21
