@@ -1,7 +1,7 @@
 # Retro Gunners pipeline config. Secrets live in env vars / GitHub secrets, never here.
 
 brand:
-  name: "Highbury Prints"            # shown in captions; rename freely
+  name: "retro.gunner"               # shown in captions; rename freely
   hashtags: "#Arsenal #COYG #Gunners #FootballArt"
   credit: "Original photo: Arsenal FC / Getty Images. Fan-made illustration, not affiliated with Arsenal FC."
 

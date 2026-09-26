@@ -3,7 +3,7 @@
 Order matters only for the first two steps. Each social account is optional and can be added later: re-run `scripts/setup.sh` and it only asks for what's missing.
 
 ## 1. Accounts to create (on your phone is fine)
-Pick a handle. The config assumes **Highbury Prints**; rename in `config.yaml → brand`. Avoid "Arsenal" in the handle because club trademarks get handles reclaimed.
+Pick a handle. The config uses **retro.gunner**; rename in `config.yaml → brand`. Avoid "Arsenal" in the handle because club trademarks get handles reclaimed.
 
 - **Instagram**: create the account → Settings → *Account type and tools* → switch to **Professional (Creator)**. No Facebook Page needed.
 - **Threads**: sign in with that Instagram account.
