@@ -50,10 +50,6 @@ if ! have TELEGRAM_BOT_TOKEN; then
 fi
 
 echo; echo "== Social accounts (skip any you haven't set up yet; re-run this script later) =="
-ask X_API_KEY        "X API key (consumer key)"
-ask X_API_SECRET     "X API key secret"
-ask X_ACCESS_TOKEN   "X access token (Read and Write)"
-ask X_ACCESS_SECRET  "X access token secret"
 ask THREADS_ACCESS_TOKEN "Threads long-lived access token"
 ask IG_ACCESS_TOKEN  "Instagram access token (Instagram API with Instagram Login)"
 

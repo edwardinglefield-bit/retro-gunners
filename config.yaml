@@ -59,7 +59,7 @@ schedule:
 publish:
   instagram: { feed: true, story_wallpaper: true }
   threads: { enabled: true }
-  x: { enabled: true }
+  x: { enabled: false }               # off: X API posting needs paid credit
 
 hosting:
   backend: github                     # github (public raw URLs from the data branch) | r2

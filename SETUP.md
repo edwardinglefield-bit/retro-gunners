@@ -7,7 +7,6 @@ Pick a handle. The config uses **retro.gunner**; rename in `config.yaml → bran
 
 - **Instagram**: create the account → Settings → *Account type and tools* → switch to **Professional (Creator)**. No Facebook Page needed.
 - **Threads**: sign in with that Instagram account.
-- **X**: create the account.
 
 ## 2. Keys (≈10 min each)
 
@@ -15,7 +14,6 @@ Pick a handle. The config uses **retro.gunner**; rename in `config.yaml → bran
 |---|---|
 | `OPENAI_API_KEY` | platform.openai.com → API keys. Image models need **Organization verification** (Settings → Organization → Verify), which is a one-time ID check. Add ~$10 credit. |
 | `TELEGRAM_BOT_TOKEN` | Telegram → @BotFather → `/newbot`. The setup script captures your chat id for you. |
-| `X_*` (4 values) | console.x.com → create a Project + App → *User authentication settings*: **Read and write** → *Keys and tokens*: API Key/Secret + **Access Token/Secret** (generate **after** setting Read and write). Buy a little pay-per-use credit: posting costs ~$0.015/post. |
 | `IG_ACCESS_TOKEN` | developers.facebook.com → Create app → use case **"Manage messaging & content on Instagram"** → *API setup with Instagram login* → add your IG account (accept the tester invite in Instagram: Settings → *Website permissions / Apps*) → **Generate token**. This is a 60-day token, and the pipeline refreshes it on its own. |
 | `THREADS_ACCESS_TOKEN` | Same Meta app → add use case **"Access the Threads API"** → permissions `threads_basic` + `threads_content_publish` → *Roles* → add your Threads account as **Threads Tester** → accept in Threads app: Settings → Account → *Website permissions* → back in the dashboard: **User Token Generator**. It's also refreshed automatically. |
 
