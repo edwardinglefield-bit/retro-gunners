@@ -167,6 +167,18 @@ def test_redo_and_budget(env):
     assert len(bot.sent) == before
 
 
+def test_run_tops_up_a_full_queue(env):
+    env.raw["schedule"]["max_generations_per_day"] = 100
+    p, bot = make(env, [])
+    p.tick()
+    p.state.set("last_discovery", 0)
+    p.tick()
+    assert len(p.state.by_status("pending")) == 2, "a full queue waits for you on its own"
+    bot.queue = [{"update_id": 1, "message": {"message_id": 5, "chat": {"id": 42}, "text": "/run"}}]
+    p.tick()
+    assert len(p.state.by_status("pending")) == 4, "/run asks for fresh previews regardless"
+
+
 def test_inbox_photo_priority(env):
     p, bot = make(env, [])
     bot.queue = [{"update_id": 1, "message": {"message_id": 5, "chat": {"id": 42}, "caption": "Rice at dusk",
@@ -228,11 +240,13 @@ def test_men_first_with_some_women(env):
     # men lead, one women's photo in four, club content once the men's run out, women's stay capped
     assert picks == ["men", "men", "men", "women", "men", "men", "men", "women", "club"]
     assert curate.choose([cand(1, "women")], env, [], ["women"] * 2 + ["men"] * 2) == []   # over the cap: wait
+    assert curate.choose([cand(40, "away", 10)], env, [], []) == []      # Gunners in other teams' shirts
     own = {**cand(30, "women"), "priority": 1}
     assert curate.choose([own], env, [], ["women"] * 8) == [own]       # your own photos always go through
     assert curate.team_of({"caption_src": "BOREHAMWOOD, ENGLAND: Alessia Russo of Arsenal"}) == "women"
     from retro.sources.arsenal import team_of_taxonomies
     assert team_of_taxonomies({"news", "men"}) == "men" and team_of_taxonomies({"women", "news"}) == "women"
+    assert team_of_taxonomies({"men", "internationals"}) == "away"
 
 
 def test_heuristic_and_captions(env):

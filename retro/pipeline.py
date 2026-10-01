@@ -38,6 +38,7 @@ class Pipeline:
         self.hosting = Hosting(cfg)
         self.tz = ZoneInfo(cfg.get("timezone", "Europe/London"))
         self.force_discover = False
+        self.top_up = False
         self.started = now_ts()
 
     # ------------------------------------------------------------------ utils
@@ -80,7 +81,7 @@ class Pipeline:
 
     # ------------------------------------------------------------------ tick
     def tick(self, force_discover: bool = False):
-        self.force_discover = force_discover
+        self.force_discover = self.top_up = force_discover
         self.started = now_ts()
         self.recover_stale()
         self.handle_updates()
@@ -195,8 +196,8 @@ class Pipeline:
                 self.state.set("paused", False)
                 self.bot.text("Resumed.")
             elif cmd == "/run":
-                self.force_discover = True
-                self.bot.text("Looking for new photos now.")
+                self.force_discover = self.top_up = True
+                self.bot.text("Looking for new photos now; up to 2 new previews coming (budget permitting).")
             elif cmd == "/status":
                 self.bot.text(self.status_text())
             else:
@@ -313,11 +314,11 @@ class Pipeline:
         if self.c("sources.arsenal_web.enabled", True):
             try:
                 found = arsenal.discover(self.cfg)
-                for c in found:   # tag items queued before the team field existed
+                for c in found:   # keep queued items' team tag in step with the source
                     old = self.state.items.get(c["key"])
-                    if old and not old.get("team"):
+                    if old and c.get("team") and old.get("team") != c["team"]:
                         self.state.update(c["key"], team=c["team"])
-                new = [c for c in found if not self.state.is_seen(c["key"])]
+                new = [c for c in found if not self.state.is_seen(c["key"]) and c.get("team") != "away"]
             except Exception as e:
                 self.notify_once("src-arsenal", f"⚠️ arsenal.com lookup failed: {e}. You can still send me photos.", 12)
         # your own photos arrive as unscored candidates
@@ -348,7 +349,8 @@ class Pipeline:
         recent_teams = [curate.team_of(i) for i in self.state.recent_generated(curate.TEAM_WINDOW)]
         chosen = curate.choose(pool, self.cfg, recent, recent_teams)
         waiting = len(self.state.by_status("pending", "generating"))
-        need = max(0, self.c("schedule.pending_review_target", 2) - waiting)
+        target = self.c("schedule.pending_review_target", 2)
+        need = target if self.top_up else max(0, target - waiting)   # /run asks for fresh previews regardless
         todo = [c for c in chosen if c.get("priority")] + [c for c in chosen if not c.get("priority")][:need]
         for c in todo:
             if not self.time_left():

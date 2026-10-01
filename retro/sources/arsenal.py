@@ -118,8 +118,13 @@ def fit_url(url: str) -> str:
     return ASSET_RE.sub(lambda m: f"https://assets.arsenal.com/prod/images/square_1000_1000/{m.group(2)}-{m.group(3)}.jpg", url)
 
 
+AWAY_TAXONOMIES = {"internationals", "loan watch"}   # Gunners in other teams' shirts
+
+
 def team_of_taxonomies(taxes: set[str]) -> str:
     """arsenal.com tags every team article "Men" or "Women"; anything else is club/academy content."""
+    if taxes & AWAY_TAXONOMIES:
+        return "away"
     if "women" in taxes:
         return "women"
     if "men" in taxes:

@@ -56,7 +56,7 @@ def phash_close(a: str, b: str, max_dist: int = 8) -> bool:
 
 
 def team_of(c: dict) -> str:
-    """men | women | club | academy. Taxonomy tag from the source when present, else a caption guess."""
+    """men | women | club | academy | away. Taxonomy tag from the source when present, else a caption guess."""
     if c.get("team"):
         return c["team"]
     text = " ".join([c.get("caption_src") or "", c.get("article_title") or ""])
@@ -172,7 +172,8 @@ def choose(scored: list[dict], cfg, recent_subjects: list[str], recent_teams: li
     min_score = ccfg.get("min_score", 7)
     share = float(ccfg.get("women_share", 0.25))
     avoid = {s.lower() for s in recent_subjects[: ccfg.get("avoid_repeat_subject_last_n", 2)] if s}
-    ok = [c for c in scored if c.get("score", 0) >= min_score and not c.get("reject")]
+    ok = [c for c in scored if c.get("score", 0) >= min_score and not c.get("reject")
+          and (c.get("priority") or team_of(c) != "away")]
     ok.sort(key=lambda c: (c.get("priority", 0), (c.get("subject") or "").lower() not in avoid,
                            c["score"], c.get("published_at") or 0), reverse=True)
     picks = [c for c in ok if c.get("priority")]
