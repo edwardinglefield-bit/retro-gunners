@@ -107,6 +107,14 @@ class State:
         done.sort(key=lambda i: i.get("generated_at", 0), reverse=True)
         return [i["subject"].lower() for i in done[:n]]
 
+    def recent_generated(self, n: int) -> list[dict]:
+        """Newest first: items picked from the sources (not your own photos) that reached the review stage."""
+        done = [i for i in self.items.values()
+                if i.get("generated_at") and not i.get("priority")
+                and i["status"] in ("pending", "approved", "posted", "skipped", "redo", "generating")]
+        done.sort(key=lambda i: i["generated_at"], reverse=True)
+        return done[:n]
+
     def prune(self, keep_days: int):
         """Drop old finished items so state.json stays small."""
         cut = now_ts() - keep_days * 86400

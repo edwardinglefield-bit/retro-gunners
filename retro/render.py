@@ -32,26 +32,12 @@ def resize_long_edge(im: Image.Image, long_edge: int) -> Image.Image:
     return im.resize((round(w * s), round(h * s)), Image.LANCZOS)
 
 
-def pad_to_aspect(im: Image.Image, lo: float, hi: float, color) -> Image.Image:
-    w, h = im.size
-    a = w / h
-    if lo <= a <= hi:
-        return im
-    if a < lo:
-        nw, nh = round(h * lo), h
-    else:
-        nw, nh = w, round(w / hi)
-    canvas = Image.new("RGB", (nw, nh), tuple(color))
-    canvas.paste(im, ((nw - w) // 2, (nh - h) // 2))
-    return canvas
-
-
 @dataclass
 class Outputs:
     art: Image.Image          # same aspect ratio as the source photo
     wallpaper: Image.Image    # phone lock/home screen
     story: Image.Image        # 9:16 for IG stories
-    feed: Image.Image         # IG feed-safe aspect
+    feed: Image.Image         # Instagram post, 4:5 portrait
     preview: Image.Image      # side-by-side for the Telegram review message
 
     def save(self, folder: Path, quality: int = 92) -> dict[str, str]:
@@ -84,15 +70,18 @@ def build(source_aspect: float, art_bytes: bytes, portrait_bytes: bytes | None, 
     wallpaper = crop_to_aspect(base, wp_w / wp_h, fx=fx).resize((wp_w, wp_h), Image.LANCZOS)
     story = crop_to_aspect(base, st_w / st_h, fx=fx).resize((st_w, st_h), Image.LANCZOS)
 
-    fw = o.get("feed_width", 1080)
-    feed = pad_to_aspect(art, 0.8, 1.91, paper)
-    feed = feed.resize((fw, round(fw * feed.size[1] / feed.size[0])), Image.LANCZOS)
+    # Instagram post: 4:5 portrait. Wide sources use the tall recomposition (drawn for portrait framing,
+    # subject in the lower-middle, quiet sky on top) so nobody gets cropped out; tall ones trim the art.
+    fw, fa = o.get("feed_width", 1080), o.get("feed_aspect", 0.8)
+    feed = crop_to_aspect(base, fa, fx=fx, fy=0.6 if portrait_bytes else 0.5)
+    feed = feed.resize((fw, round(fw / fa)), Image.LANCZOS)
 
-    ph = 1000
-    a = art.resize((round(art.size[0] * ph / art.size[1]), ph), Image.LANCZOS)
-    wpp = wallpaper.resize((round(wp_w * ph / wp_h), ph), Image.LANCZOS)
-    gap = 24
-    preview = Image.new("RGB", (a.size[0] + wpp.size[0] + gap * 3, ph + gap * 2), tuple(paper))
-    preview.paste(a, (gap, gap))
-    preview.paste(wpp, (a.size[0] + gap * 2, gap))
+    # Review preview, left to right: art (Threads) | Instagram post | wallpaper (Threads + IG Story)
+    ph, gap = 1000, 24
+    panels = [im.resize((round(im.size[0] * ph / im.size[1]), ph), Image.LANCZOS) for im in (art, feed, wallpaper)]
+    preview = Image.new("RGB", (sum(p.size[0] for p in panels) + gap * (len(panels) + 1), ph + gap * 2), tuple(paper))
+    x = gap
+    for p in panels:
+        preview.paste(p, (x, gap))
+        x += p.size[0] + gap
     return Outputs(art=art, wallpaper=wallpaper, story=story, feed=feed, preview=preview)

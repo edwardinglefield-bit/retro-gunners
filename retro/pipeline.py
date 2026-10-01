@@ -312,7 +312,12 @@ class Pipeline:
         new: list[dict] = []
         if self.c("sources.arsenal_web.enabled", True):
             try:
-                new = [c for c in arsenal.discover(self.cfg) if not self.state.is_seen(c["key"])]
+                found = arsenal.discover(self.cfg)
+                for c in found:   # tag items queued before the team field existed
+                    old = self.state.items.get(c["key"])
+                    if old and not old.get("team"):
+                        self.state.update(c["key"], team=c["team"])
+                new = [c for c in found if not self.state.is_seen(c["key"])]
             except Exception as e:
                 self.notify_once("src-arsenal", f"⚠️ arsenal.com lookup failed: {e}. You can still send me photos.", 12)
         # your own photos arrive as unscored candidates
@@ -340,7 +345,8 @@ class Pipeline:
                     self.state.put(c)
         pool = [i for i in self.state.by_status("candidate")
                 if i.get("priority") or (i.get("published_at") or 0) >= now_ts() - lookback]
-        chosen = curate.choose(pool, self.cfg, recent)
+        recent_teams = [curate.team_of(i) for i in self.state.recent_generated(curate.TEAM_WINDOW)]
+        chosen = curate.choose(pool, self.cfg, recent, recent_teams)
         waiting = len(self.state.by_status("pending", "generating"))
         need = max(0, self.c("schedule.pending_review_target", 2) - waiting)
         todo = [c for c in chosen if c.get("priority")] + [c for c in chosen if not c.get("priority")][:need]
@@ -414,6 +420,7 @@ class Pipeline:
             lines.append(f"📷 {it['credit']}")
         if it.get("article_url"):
             lines.append(it["article_url"])
+        lines.append("Left: Threads · Middle: Instagram post · Right: wallpaper (Threads + IG Story)")
         lines.append("Reply with text to change the caption.")
         return "\n".join(lines)
 

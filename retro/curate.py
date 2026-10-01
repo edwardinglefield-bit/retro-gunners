@@ -19,6 +19,8 @@ ACTION = re.compile(r"\b(celebrat\w*|scores?|scoring|goal|header|tackl\w*|saves?
                     r"jumps?|sprints?|dribbl\w*|applaud\w*|embrace\w*|lifts?|trophy|wins?)\b", re.I)
 WEAK = re.compile(r"\b(fans? (?:outside|arrive)|general view|mascot|sponsor|ticket|kit launch|boots?|"
                   r"graphic|logo|programme|press conference|interview|arrives?)\b", re.I)
+WOMEN_RE = re.compile(r"\bWomen\b|Women's|\bWSL\b|Borehamwood|Meadow Park|Lionesses", re.I)
+TEAM_WINDOW = 8   # how many recent previews the team mix is measured over
 SUBJECT_RE = re.compile(r"(?::\s*|^)([A-Z][\w'\-\.]+(?: [A-Z][\w'\-\.]+){0,3})(?: and [A-Z][\w'\-\.]+(?: [A-Z][\w'\-\.]+)*)? of Arsenal")
 
 SCORER_PROMPT = """You are the photo editor for a fan account that turns Arsenal FC photos into
@@ -51,6 +53,14 @@ def phash_close(a: str, b: str, max_dist: int = 8) -> bool:
         return imagehash.hex_to_hash(a) - imagehash.hex_to_hash(b) <= max_dist
     except Exception:
         return False
+
+
+def team_of(c: dict) -> str:
+    """men | women | club | academy. Taxonomy tag from the source when present, else a caption guess."""
+    if c.get("team"):
+        return c["team"]
+    text = " ".join([c.get("caption_src") or "", c.get("article_title") or ""])
+    return "women" if WOMEN_RE.search(text) else "men"
 
 
 def heuristic(c: dict) -> tuple[int, str, str]:
@@ -107,7 +117,8 @@ def score_candidates(cands: list[dict], cfg, recent_subjects: list[str], known_h
     # cheap pre-rank so we only pay to vision-score the most promising
     for c in cands:
         c["h_score"], c["subject"], c["headline"] = heuristic(c)
-    cands.sort(key=lambda c: (c.get("priority", 0), c["h_score"], c.get("published_at") or 0), reverse=True)
+    cands.sort(key=lambda c: (c.get("priority", 0), team_of(c) == "men", c["h_score"], c.get("published_at") or 0),
+               reverse=True)
     cands = cands[: ccfg.get("max_scored_per_run", 36)]
 
     kept: list[tuple[dict, Image.Image]] = []
@@ -154,11 +165,29 @@ def score_candidates(cands: list[dict], cfg, recent_subjects: list[str], known_h
     return [c for c, _ in kept] + [c for c in cands if c.get("reject")]
 
 
-def choose(scored: list[dict], cfg, recent_subjects: list[str]) -> list[dict]:
+def choose(scored: list[dict], cfg, recent_subjects: list[str], recent_teams: list[str] = ()) -> list[dict]:
+    """Best first. Your own photos lead; then men's team photos, with women's team photos
+    mixed in up to `curation.women_share` of recent previews (never above it)."""
     ccfg = cfg.get("curation", {}) or {}
     min_score = ccfg.get("min_score", 7)
+    share = float(ccfg.get("women_share", 0.25))
     avoid = {s.lower() for s in recent_subjects[: ccfg.get("avoid_repeat_subject_last_n", 2)] if s}
     ok = [c for c in scored if c.get("score", 0) >= min_score and not c.get("reject")]
     ok.sort(key=lambda c: (c.get("priority", 0), (c.get("subject") or "").lower() not in avoid,
                            c["score"], c.get("published_at") or 0), reverse=True)
-    return ok
+    picks = [c for c in ok if c.get("priority")]
+    women = [c for c in ok if not c.get("priority") and team_of(c) == "women"]
+    others = [c for c in ok if not c.get("priority") and team_of(c) != "women"]
+    others.sort(key=lambda c: team_of(c) == "men", reverse=True)   # stable: keeps the ranking within each group
+    window = list(recent_teams)[:TEAM_WINDOW]
+    while women or others:
+        women_ok = women and (window.count("women") + 1) / (len(window) + 1) <= share
+        if women_ok and (window.count("women") / max(len(window), 1) < share or not others):
+            c = women.pop(0)
+        elif others:
+            c = others.pop(0)
+        else:
+            break
+        picks.append(c)
+        window = [team_of(c)] + window[:TEAM_WINDOW - 1]
+    return picks

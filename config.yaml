@@ -10,8 +10,8 @@ timezone: "Europe/London"
 sources:
   arsenal_web:
     enabled: true
-    lookback_hours: 72                # only galleries published in this window
-    max_articles: 60                  # how many recent articles to scan per discovery
+    lookback_hours: 168               # a week, so men's team photos keep coming through international breaks
+    max_articles: 120                 # how many recent articles to scan per discovery
     gallery_keywords: ["photos", "gallery", "match gallery", "training gallery", "inside training"]
   telegram_inbox:
     enabled: true                     # photos you send the bot get queued at top priority
@@ -21,6 +21,7 @@ curation:
   model: "gpt-5-mini"                 # any vision-capable chat model
   min_score: 7                        # 1-10
   avoid_repeat_subject_last_n: 2      # don't feature the same player twice in a row
+  women_share: 0.25                   # men's team first; at most ~1 in 4 previews from the women's team (0 = never)
   max_scored_per_run: 36              # cost guard
 
 style:
@@ -40,7 +41,8 @@ output:
   art_long_edge: 2048                 # "original format" export, same aspect ratio as the source photo
   wallpaper_size: [1290, 2796]        # modern iPhone; also fine on most Android phones
   story_size: [1080, 1920]
-  feed_width: 1080                    # Instagram feed (aspect clamped to 4:5 .. 1.91:1 with paper margins)
+  feed_width: 1080                    # Instagram post: 4:5 portrait (1080x1350), the largest size in the feed
+  feed_aspect: 0.8
   paper_color: [236, 228, 211]        # off-white margin colour used when padding
   jpeg_quality: 92
 

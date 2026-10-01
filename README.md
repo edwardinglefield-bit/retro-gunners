@@ -5,12 +5,13 @@ This pipeline takes Arsenal's official photos and turns them into mid-century ge
 ```
 arsenal.com galleries ─┐                               ┌─ X: art + wallpaper (off)
 photos you send the bot ┴► score (vision model) ► style (gpt-image-2) ► Telegram review ► Threads: 2-image carousel
-                                                   ├ art (source aspect)                  └─ Instagram: feed art + wallpaper story
+                                                   ├ art (source aspect)                  └─ Instagram: 4:5 post + wallpaper story
                                                    └ wallpaper 1290×2796 (+ 9:16 story)
 ```
 
 ## Day to day
-- About two previews wait for you at any time. Tap ✅ Post, 🔁 Redo or ✖ Skip.
+- About two previews wait for you at any time. Each shows the Threads art (left), the 4:5 Instagram post (middle) and the phone wallpaper (right; it goes to Threads and your IG Story). Tap ✅ Post, 🔁 Redo or ✖ Skip.
+- Men's team photos come first; about 1 in 4 previews is from the women's team (`curation.women_share`).
 - Approved items post at the next slot (08:30 / 13:00 / 19:30 UK), at most 3 a day, with at least 3h between posts.
 - **Send the bot any photo** to have it illustrated next. If you add a caption, it becomes the post caption.
 - **Reply to a preview** with text to replace its caption.

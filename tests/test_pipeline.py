@@ -217,8 +217,22 @@ def test_render_sizes(env):
         o = render.build(w / h, art, portrait, env)
         assert abs(o.art.size[0] / o.art.size[1] - w / h) < 0.01 and max(o.art.size) == 2048
         assert o.wallpaper.size == (1290, 2796) and o.story.size == (1080, 1920)
-        a = o.feed.size[0] / o.feed.size[1]
-        assert 0.8 - 0.01 <= a <= 1.91 and o.feed.size[0] == 1080
+        assert o.feed.size == (1080, 1350)
+
+
+def test_men_first_with_some_women(env):
+    def cand(i, team, score=8):
+        return {"key": f"k{i}", "team": team, "score": score, "subject": f"player {i}", "published_at": i}
+    pool = [cand(i, "women", 10) for i in range(6)] + [cand(10 + i, "men") for i in range(6)] + [cand(20, "club")]
+    picks = [curate.team_of(c) for c in curate.choose(pool, env, [], [])]
+    # men lead, one women's photo in four, club content once the men's run out, women's stay capped
+    assert picks == ["men", "men", "men", "women", "men", "men", "men", "women", "club"]
+    assert curate.choose([cand(1, "women")], env, [], ["women"] * 2 + ["men"] * 2) == []   # over the cap: wait
+    own = {**cand(30, "women"), "priority": 1}
+    assert curate.choose([own], env, [], ["women"] * 8) == [own]       # your own photos always go through
+    assert curate.team_of({"caption_src": "BOREHAMWOOD, ENGLAND: Alessia Russo of Arsenal"}) == "women"
+    from retro.sources.arsenal import team_of_taxonomies
+    assert team_of_taxonomies({"news", "men"}) == "men" and team_of_taxonomies({"women", "news"}) == "women"
 
 
 def test_heuristic_and_captions(env):

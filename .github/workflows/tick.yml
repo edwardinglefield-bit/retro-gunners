@@ -2,7 +2,7 @@ name: tick
 
 on:
   schedule:
-    - cron: "*/15 * * * *"        # Telegram taps are picked up within ~15 min
+    - cron: "7,22,37,52 * * * *"  # off the :00/:15 marks GitHub drops most often; best-effort only
   workflow_dispatch:
     inputs:
       command:

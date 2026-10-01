@@ -118,6 +118,15 @@ def fit_url(url: str) -> str:
     return ASSET_RE.sub(lambda m: f"https://assets.arsenal.com/prod/images/square_1000_1000/{m.group(2)}-{m.group(3)}.jpg", url)
 
 
+def team_of_taxonomies(taxes: set[str]) -> str:
+    """arsenal.com tags every team article "Men" or "Women"; anything else is club/academy content."""
+    if "women" in taxes:
+        return "women"
+    if "men" in taxes:
+        return "men"
+    return "academy" if "academy" in taxes else "club"
+
+
 def is_galleryish(article: dict, keywords: list[str]) -> bool:
     hay = " ".join([article.get("title", "")] + list(article.get("taxonomies") or [])).lower()
     return any(k in hay for k in keywords)
@@ -145,6 +154,7 @@ def discover(cfg) -> list[dict]:
             "article_url": article_url,
             "article_title": a.get("title", ""),
             "published_at": pub.timestamp() if pub else None,
+            "team": team_of_taxonomies(taxes),
         }
         # 1) Every article's hero image is a candidate (often the best shot of the day).
         if a.get("promoImage"):
