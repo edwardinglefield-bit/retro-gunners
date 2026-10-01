@@ -61,8 +61,16 @@ def cmd_doctor(args):
     check("OpenAI key", lambda: "set" if env("OPENAI_API_KEY") and session().get(
         "https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {env('OPENAI_API_KEY')}"},
         timeout=30).ok else (_ for _ in ()).throw(RuntimeError("missing or invalid")))
-    check("Telegram", lambda: (p.bot._call("getMe") or {}).get("username", "missing token") +
-          ("" if p.bot.owner else " (TELEGRAM_OWNER_ID not set: message the bot, it will tell you your id)"))
+    def tg():
+        if not p.bot.enabled:
+            raise RuntimeError("TELEGRAM_BOT_TOKEN missing")
+        me = p.bot._call("getMe")
+        if not me:
+            raise RuntimeError("Telegram rejected the bot token: re-run scripts/setup.sh and paste it again")
+        return "@" + me.get("username", "?") + (
+            "" if p.bot.owner else " (TELEGRAM_OWNER_ID not set: message the bot, it will tell you your id)")
+
+    check("Telegram", tg)
     check("STATE_KEY", lambda: "set" if env("STATE_KEY") else (_ for _ in ()).throw(RuntimeError("missing")))
     from .publishers import Instagram, Threads, X
     for pub in (X(cfg, p.vault), Threads(cfg, p.vault), Instagram(cfg, p.vault)):

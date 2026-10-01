@@ -35,18 +35,34 @@ have STATE_KEY || { python3 -c "import base64,os;print(base64.urlsafe_b64encode(
 ask OPENAI_API_KEY "OpenAI API key (sk-...)"
 
 echo; echo "== Telegram review bot =="
-if ! have TELEGRAM_BOT_TOKEN; then
-  read -rsp "Bot token from @BotFather (Enter to skip): " TG; echo
-  if [[ -n "$TG" ]]; then
-    printf '%s' "$TG" | gh secret set TELEGRAM_BOT_TOKEN
-    read -rp "Now open your bot in Telegram, send it /start, then press Enter here... " _
-    FOUND=$(curl -s "https://api.telegram.org/bot$TG/getUpdates" | python3 -c \
-      "import sys,json;r=json.load(sys.stdin).get('result',[]);m=[u['message'] for u in r if u.get('message',{}).get('text','').startswith('/start') and u['message']['chat']['type']=='private'];print(f\"{m[-1]['chat']['id']} @{m[-1]['from'].get('username','?')} {m[-1]['from'].get('first_name','')}\" if m else '')")
-    if [[ -n "$FOUND" ]]; then
-      read -rp "  Found ${FOUND#* }. Is that you? [Y/n] " ok
-      if [[ "$ok" != "n" ]]; then printf '%s' "${FOUND%% *}" | gh secret set TELEGRAM_OWNER_ID; echo "  owner saved"; fi
-    else echo "  Couldn't find your /start. Message the bot later; it replies with your id. Save it as TELEGRAM_OWNER_ID."; fi
+tg_bot() {  # prints @botname if Telegram accepts the token, nothing otherwise
+  curl -s "https://api.telegram.org/bot$1/getMe" | python3 -c \
+    "import sys,json;j=json.load(sys.stdin);print('@'+j['result']['username'] if j.get('ok') else '')" 2>/dev/null || true
+}
+TG=""; NEED_TG=y
+if have TELEGRAM_BOT_TOKEN; then
+  read -rp "TELEGRAM_BOT_TOKEN is already set. Replace? [y/N] " a
+  [[ "$a" == "y" ]] || NEED_TG=n
+fi
+while [[ "$NEED_TG" == y ]]; do
+  read -rsp "Bot token from @BotFather, looks like 123456789:AAH... (Enter to skip): " TG; echo
+  TG=$(printf '%s' "$TG" | tr -d '[:space:]'); TG=${TG#bot}
+  [[ -z "$TG" ]] && break
+  BOT=$(tg_bot "$TG")
+  if [[ -n "$BOT" ]]; then
+    printf '%s' "$TG" | gh secret set TELEGRAM_BOT_TOKEN; echo "  saved token for $BOT"; break
   fi
+  echo "  Telegram rejected that token. In @BotFather send /mybots → your bot → API Token, copy just the token, and try again."
+  TG=""
+done
+if [[ -n "$TG" ]] && ! have TELEGRAM_OWNER_ID; then
+  read -rp "Now open $BOT in Telegram, send it /start, then press Enter here... " _
+  FOUND=$(curl -s "https://api.telegram.org/bot$TG/getUpdates" | python3 -c \
+    "import sys,json;r=json.load(sys.stdin).get('result',[]);m=[u['message'] for u in r if u.get('message',{}).get('text','').startswith('/start') and u['message']['chat']['type']=='private'];print(f\"{m[-1]['chat']['id']} @{m[-1]['from'].get('username','?')} {m[-1]['from'].get('first_name','')}\" if m else '')" || true)
+  if [[ -n "$FOUND" ]]; then
+    read -rp "  Found ${FOUND#* }. Is that you? [Y/n] " ok
+    if [[ "$ok" != "n" ]]; then printf '%s' "${FOUND%% *}" | gh secret set TELEGRAM_OWNER_ID; echo "  owner saved"; fi
+  else echo "  Couldn't find your /start. Message the bot later; it replies with your id. Save it as TELEGRAM_OWNER_ID."; fi
 fi
 
 echo; echo "== Social accounts (skip any you haven't set up yet; re-run this script later) =="
