@@ -11,6 +11,7 @@ from retro import captions, config, curate, render
 from retro.providers.local import LocalPoster
 from retro.publishers.base import Publisher
 from retro.state import State
+from retro.telegram import Telegram
 
 CAP = ("LONDON, ENGLAND - SEPTEMBER 20: Bukayo Saka of Arsenal celebrates scoring his team's second goal "
        "during the Premier League match between Arsenal FC and Chelsea FC at Emirates Stadium on September 20, "
@@ -48,8 +49,12 @@ class FakeBot:
         self.sent.append((item["id"], self._mid, caption))
         return self._mid
 
-    def edit_caption(self, mid, caption, keep_buttons_for=None):
+    keyboard = staticmethod(Telegram.keyboard)
+    keyboard_for = Telegram.keyboard_for
+
+    def edit_caption(self, mid, caption, keep_buttons_for=None, keyboard=None):
         self.edits.append((mid, caption))
+        self.keyboards = getattr(self, "keyboards", []) + [keyboard]
 
     def answer(self, *a):
         pass
@@ -179,13 +184,71 @@ def test_run_tops_up_a_full_queue(env):
     assert len(p.state.by_status("pending")) == 4, "/run asks for fresh previews regardless"
 
 
+def test_caption_options_pick_and_learn(env, monkeypatch):
+    import retro.pipeline as pl
+    seen = []
+
+    def fake_write(item, cfg, examples=()):
+        seen.append(list(examples))
+        return ["North London is red.", "Highbury would be proud.", "That's our club."]
+
+    th = FakePub("threads")
+    p, bot = make(env, [th])
+    p.tick()                                           # made before the writer existed: plain description
+    first, second = bot.sent[0][0], bot.sent[1][0]
+    monkeypatch.setattr(pl.copywriter, "write", fake_write)
+    p.tick()                                           # waiting previews get their options and buttons
+    assert p.state.items[first]["captions"][1] == "Highbury would be proud."
+    assert "2\ufe0f\u20e3 Highbury would be proud." in bot.edits[-1][1]
+    assert [b["text"] for b in bot.keyboards[-1]["inline_keyboard"][0]] == ["✅ Post 1", "✅ Post 2", "✅ Post 3"]
+
+    monkeypatch.setattr(type(p), "slot_open", lambda self, now=None: True)
+    monkeypatch.setattr(type(p), "quiet_now", lambda self, now=None: False)
+    bot.queue = [{"update_id": 1, "callback_query": {"id": "c", "data": f"a:{first}:1:1", "from": {"id": 42},
+                                                     "message": {"chat": {"id": 42}}}},
+                 {"update_id": 2, "message": {"message_id": 9, "chat": {"id": 42}, "text": "Up the Arsenal, always.",
+                                              "reply_to_message": {"message_id": p.state.items[second]["tg_message_id"]}}}]
+    p.tick()
+    assert th.calls[0].startswith("Highbury would be proud.")            # the tapped option is what posts
+    assert captions.lead(p.state.items[second]) == "Up the Arsenal, always."   # your own text wins
+    assert p.state.d["voice_examples"] == ["Up the Arsenal, always."]
+
+    p.state.update(second, status="redo")              # the next write sees your caption as a voice example
+    p.tick()
+    assert seen[-1] == ["Up the Arsenal, always."]
+
+
+def test_copywriter_cleans_and_keeps_your_note(env, monkeypatch):
+    from retro import copywriter
+
+    class R:
+        ok = True
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"captions": ["Le Professeur arrives. #Arsenal #COYG", '
+                                                        '"1996, and nothing was the same.", "' + "x " * 150 + '"]}'}}]}
+
+    posted = {}
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setattr(copywriter, "session", lambda: type("S", (), {"post": lambda self, url, **kw: posted.update(kw) or R()})())
+    item = {"article_title": "The full inside story of Arsène Wenger's arrival in 1996", "team": "men", "headline": "Manager on pitch"}
+    out = copywriter.write(item, env, ["Up the Arsenal."])
+    assert out[0] == "Le Professeur arrives." and len(out) == 3 and len(out[2]) <= 201
+    prompt = posted["json"]["messages"][0]["content"]
+    assert "Wenger's arrival in 1996" in prompt and "- Up the Arsenal." in prompt and "lifelong Gooner" in prompt
+    mine = copywriter.write({"source": "telegram", "caption_src": "Arteta, title night"}, env)
+    assert mine[0] == "Arteta, title night" and len(mine) == 3
+    env.raw["captions"]["writer"] = "off"
+    assert copywriter.write(item, env) == []
+
+
 def test_inbox_photo_priority(env):
     p, bot = make(env, [])
     bot.queue = [{"update_id": 1, "message": {"message_id": 5, "chat": {"id": 42}, "caption": "Rice at dusk",
                                               "photo": [{"file_id": "f", "file_unique_id": "u1"}]}}]
     p.tick()
     it = p.state.items["tg-u1"]
-    assert it["status"] == "pending" and it["caption_override"] == "Rice at dusk"
+    assert it["status"] == "pending" and captions.lead(it) == "Rice at dusk"
     assert bot.sent[0][0] == "tg-u1"
 
 

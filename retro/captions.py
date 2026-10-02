@@ -9,9 +9,23 @@ def credit_line(item: dict) -> str:
     return f"Original photo: {who}." if who else "Original photo: Arsenal FC."
 
 
+def options(item: dict) -> list[str]:
+    """Written caption options still on offer (none once you've replied with your own text)."""
+    return [] if item.get("caption_override") else list(item.get("captions") or [])
+
+
+def lead(item: dict) -> str:
+    """The line that opens the post: your own text, else the option you picked, else the plain description."""
+    opts = options(item)
+    if opts:
+        return opts[min(int(item.get("caption_pick") or 0), len(opts) - 1)].strip()
+    note = item.get("caption_src") if item.get("source") == "telegram" else ""   # sent along with your photo
+    return (item.get("caption_override") or note or item.get("headline") or "").strip()
+
+
 def build(item: dict, cfg, platform: str) -> str:
     brand = cfg.get("brand", {}) or {}
-    headline = (item.get("caption_override") or item.get("headline") or "").strip()
+    headline = lead(item)
     tags = brand.get("hashtags", "#Arsenal #COYG")
     if platform == "x":
         short_tags = " ".join(tags.split()[:2])

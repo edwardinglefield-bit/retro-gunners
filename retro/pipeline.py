@@ -7,7 +7,7 @@ from datetime import datetime, time as dtime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import captions, curate, render
+from . import captions, copywriter, curate, render
 from .hosting import Hosting
 from .http import download
 from .providers import ProviderRefused, get_provider
@@ -24,7 +24,8 @@ STALE_GENERATING_SECONDS = 30 * 60
 TICK_BUDGET_SECONDS = 15 * 60   # stop starting new generations after this (job limit is 25 min)
 
 HELP = ("Commands:\n/status – queue + budget\n/run – look for new photos now\n/pause, /resume – stop/start everything\n"
-        "Send me any photo to have it illustrated next.\nReply to a preview with text to replace its caption.")
+        "Send me any photo to have it illustrated next; add a note (who, when) and the captions are written from it.\n"
+        "Reply to a preview with text to use your own caption.")
 
 
 class Pipeline:
@@ -89,6 +90,7 @@ class Pipeline:
             log.info("paused")
             return
         self.refresh_tokens()
+        self.caption_waiting_previews()
         self.resend_missing_previews()
         self.publish_due()
         self.process_redos()
@@ -133,13 +135,15 @@ class Pipeline:
         chat = (cb.get("message") or {}).get("chat", {}).get("id") or cb["from"]["id"]
         if not (self.bot.is_owner(chat) and self.bot.is_owner(cb.get("from", {}).get("id"))):
             return
-        action, item_id, gen = ((cb.get("data") or "").split(":") + ["", ""])[:3]
+        action, item_id, gen, pick = ((cb.get("data") or "").split(":") + ["", "", ""])[:4]
         it = self.state.items.get(item_id)
         if not it or it["status"] != "pending" or (gen and str(it.get("gen")) != gen):
             self.bot.answer(cb["id"], "Already handled, or an older version")
             return
         msg_id = it.get("tg_message_id")
-        head = it.get("caption_override") or it.get("headline") or ""
+        if action == "a" and pick.isdigit():
+            self.state.update(item_id, caption_pick=int(pick))
+        head = captions.lead(it)
         if action == "a":
             self.state.update(item_id, status="approved", approved_at=now_ts())
             self.bot.answer(cb["id"], "Queued for the next slot")
@@ -182,7 +186,7 @@ class Pipeline:
             (inbox / f"{key}.jpg").write_bytes(data)
             cap = (m.get("caption") or "").strip()
             self.state.put({"id": key, "key": key, "source": "telegram", "local_path": f"inbox/{key}.jpg",
-                            "priority": 1, "caption_src": cap, "headline": cap, "caption_override": cap or None,
+                            "priority": 1, "caption_src": cap, "headline": cap,
                             "published_at": now_ts(), "credit": ""})
             self.force_discover = True
             self.bot.text("Got it. It'll be illustrated on this run (budget permitting).", reply_to=m["message_id"])
@@ -208,6 +212,10 @@ class Pipeline:
             for it in self.state.items.values():
                 if it.get("tg_message_id") == reply:
                     self.state.update(it["id"], caption_override=text)
+                    # your own captions teach the writer your voice
+                    self.state.set("voice_examples", (self.state.d.get("voice_examples") or [])[-11:] + [text])
+                    if it["status"] == "pending":
+                        self.bot.edit_caption(reply, self.review_caption(it), keyboard=self.bot.keyboard_for(it))
                     self.bot.text("Caption updated.", reply_to=m["message_id"])
                     return
         self.bot.text(HELP)
@@ -295,7 +303,7 @@ class Pipeline:
             self.state.update(it["id"], status="posted" if it["posted"] else "failed", posted_at=now_ts())
             links = "\n".join(f"{k}: {v.get('url') or v.get('id')}" for k, v in it["posted"].items())
             self.bot.edit_caption(it.get("tg_message_id"),
-                                  f"📣 Posted\n{it.get('caption_override') or it.get('headline', '')}\n{links}"
+                                  f"📣 Posted\n{captions.lead(it)}\n{links}"
                                   if it["posted"] else "❌ Publishing failed on every platform")
 
     def refresh_tokens(self):
@@ -411,7 +419,9 @@ class Pipeline:
             self.state.update(it["id"], status="failed" if tries >= 2 else "candidate")
             self.notify_once(f"gen-{it['id']}", f"⚠️ Generation failed: {str(e)[:300]}", 6)
             return
-        self.state.update(it["id"], media_dir=rel, files=files, generated_at=now_ts())
+        self.state.update(it["id"], media_dir=rel, files=files, generated_at=now_ts(),
+                          captions=copywriter.write(it, self.cfg, self.state.d.get("voice_examples") or []),
+                          caption_pick=0)
         if self.review_mode() == "auto":
             self.state.update(it["id"], status="approved", approved_at=now_ts())
             return
@@ -422,16 +432,30 @@ class Pipeline:
             self.send_review(it)
         self.state.save()
 
+    def caption_waiting_previews(self):
+        """Previews made before the caption writer existed (or while it was failing) get their options now."""
+        for it in self.state.by_status("pending"):
+            if it.get("captions") or it.get("caption_override") or not it.get("media_dir"):
+                continue
+            opts = copywriter.write(it, self.cfg, self.state.d.get("voice_examples") or [])
+            if opts:
+                self.state.update(it["id"], captions=opts, caption_pick=0)
+                self.bot.edit_caption(it.get("tg_message_id"), self.review_caption(it),
+                                      keyboard=self.bot.keyboard_for(it))
+
     def review_caption(self, it: dict) -> str:
-        lines = [it.get("caption_override") or it.get("headline") or "(no caption)",
-                 f"Score {it.get('score', '?')}/10 · {it.get('subject') or 'unknown subject'}"
-                 + (f" · redo #{it['gen'] - 1}" if it.get("gen", 1) > 1 else "")]
+        opts = captions.options(it)
+        lines = ([f"{n}\ufe0f\u20e3 {c}" for n, c in enumerate(opts, 1)] if len(opts) > 1
+                 else [captions.lead(it) or "(no caption)"])
+        lines.append(f"Score {it.get('score', '?')}/10 · {it.get('subject') or 'unknown subject'}"
+                     + (f" · redo #{it['gen'] - 1}" if it.get("gen", 1) > 1 else ""))
         if it.get("credit"):
             lines.append(f"📷 {it['credit']}")
         if it.get("article_url"):
             lines.append(it["article_url"])
         lines.append("Left: Threads · Middle: Instagram post · Right: wallpaper (Threads + IG Story)")
-        lines.append("Reply with text to change the caption.")
+        lines.append("Tap the caption to post, or reply with your own." if len(opts) > 1
+                     else "Reply with text to change the caption.")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------ housekeeping

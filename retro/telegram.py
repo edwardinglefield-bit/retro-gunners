@@ -53,13 +53,18 @@ class Telegram:
         return self._call("sendMessage", **params)
 
     @staticmethod
-    def keyboard(item_id: str, gen: int | str = "") -> dict:
+    def keyboard(item_id: str, gen: int | str = "", options: int = 0) -> dict:
         # gen ties a tap to the exact version you saw (a redo invalidates old buttons)
-        return {"inline_keyboard": [[
-            {"text": "✅ Post", "callback_data": f"a:{item_id}:{gen}"},
-            {"text": "🔁 Redo", "callback_data": f"r:{item_id}:{gen}"},
-            {"text": "✖ Skip", "callback_data": f"s:{item_id}:{gen}"},
-        ]]}
+        rest = [{"text": "🔁 Redo", "callback_data": f"r:{item_id}:{gen}"},
+                {"text": "✖ Skip", "callback_data": f"s:{item_id}:{gen}"}]
+        if options > 1:   # one tap picks the caption and approves
+            return {"inline_keyboard": [[{"text": f"✅ Post {n + 1}", "callback_data": f"a:{item_id}:{gen}:{n}"}
+                                         for n in range(options)], rest]}
+        return {"inline_keyboard": [[{"text": "✅ Post", "callback_data": f"a:{item_id}:{gen}"}] + rest]}
+
+    def keyboard_for(self, item: dict) -> dict:
+        from .captions import options
+        return self.keyboard(item["id"], item.get("gen", ""), len(options(item)))
 
     def send_preview(self, item: dict, preview: Path, caption: str) -> int | None:
         if not self.owner:
@@ -67,14 +72,17 @@ class Telegram:
         with open(preview, "rb") as fh:
             res = self._call("sendPhoto", files={"photo": ("preview.jpg", fh, "image/jpeg")},
                              chat_id=self.owner, caption=caption[:1000],
-                             reply_markup=self.keyboard(item["id"], item.get("gen", "")))
+                             reply_markup=self.keyboard_for(item))
         return res["message_id"] if res else None
 
-    def edit_caption(self, message_id: int | None, caption: str, keep_buttons_for: str | None = None):
+    def edit_caption(self, message_id: int | None, caption: str, keep_buttons_for: str | None = None,
+                     keyboard: dict | None = None):
         if not (self.owner and message_id):
             return
         params = {"chat_id": self.owner, "message_id": message_id, "caption": caption[:1000]}
-        if not keep_buttons_for:
+        if keyboard:
+            params["reply_markup"] = keyboard
+        elif not keep_buttons_for:
             params["reply_markup"] = {"inline_keyboard": []}
         self._call("editMessageCaption", **params)
 

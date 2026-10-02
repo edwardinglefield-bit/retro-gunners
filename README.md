@@ -13,8 +13,9 @@ photos you send the bot ┴► score (vision model) ► style (gpt-image-2) ► 
 - About two previews wait for you at any time. Each shows the Threads art (left), the 4:5 Instagram post (middle) and the phone wallpaper (right; it goes to Threads and your IG Story). Tap ✅ Post, 🔁 Redo or ✖ Skip.
 - Men's team photos come first; about 1 in 4 previews is from the women's team (`curation.women_share`).
 - Approved items post at the next slot (08:30 / 13:00 / 19:30 UK), at most 3 a day, with at least 3h between posts.
-- **Send the bot any photo** to have it illustrated next. If you add a caption, it becomes the post caption.
-- **Reply to a preview** with text to replace its caption.
+- **Send the bot any photo** to have it illustrated next. Add a note (who, when, why it matters) and the captions are written from it; your note is also offered word for word as option 1.
+- **Captions**: each preview offers 3, written in the voice described in `styles/caption_voice.txt`. Tap **✅ Post 1/2/3** to pick one and approve in one go.
+- **Reply to a preview** with text to use your own caption instead. The writer learns your voice from the ones you write.
 - `/status` · `/run` · `/pause` · `/resume`
 
 ## Cost
@@ -30,6 +31,7 @@ Set the knobs in `config.yaml`: `schedule.max_generations_per_day` and `style.pr
 | Want | Edit |
 |---|---|
 | Different art style | `styles/mcm_geo.txt` (or add a file and point `style.prompt_file` at it) |
+| Caption tone | `styles/caption_voice.txt` (plain English) |
 | Another image provider | `style.provider: gemini` (needs `GEMINI_API_KEY`), or add a class in `retro/providers/` |
 | Post without review | `review.mode: auto` |
 | Posting times / volume | `schedule.*` in `config.yaml` |

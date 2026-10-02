@@ -24,6 +24,13 @@ curation:
   women_share: 0.25                   # men's team first; at most ~1 in 4 previews from the women's team (0 = never)
   max_scored_per_run: 36              # cost guard
 
+captions:
+  writer: openai                      # openai = written in your voice, 3 options per preview | off = plain one-line description
+  model: "gpt-5"                      # text only, about a penny per preview; falls back to curation.model if unavailable
+  voice_file: styles/caption_voice.txt   # plain-English voice guide: edit it to change the tone
+  options: 3                          # how many to choose from in Telegram
+  max_chars: 200
+
 style:
   provider: openai                    # openai | gemini | local (local = free offline test filter)
   prompt_file: styles/mcm_geo.txt
