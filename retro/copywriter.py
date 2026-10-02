@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 PROMPT = """{voice}
 
-Write {n} different captions for one post, each from a different angle (the moment, the history, the feeling).
+Write {n} different captions for one post, each from a different angle (for example: what the moment means, the person, the mood).
 Each one opens the post: one or two sentences, at most {max_chars} characters, no hashtags.
 Use only facts from the notes below. Never invent scores, dates, stats or quotes. If the notes don't name anyone, don't guess a name.
 
