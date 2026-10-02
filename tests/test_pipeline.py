@@ -196,12 +196,49 @@ def test_publish_failure_retries_then_gives_up(env, monkeypatch):
     p.tick()
     first = bot.sent[0][0]
     monkeypatch.setattr(type(p), "slot_open", lambda self, now=None: True)
+    monkeypatch.setattr(type(p), "quiet_now", lambda self, now=None: False)
     p.state.update(first, status="approved", approved_at=1)
     for _ in range(3):
         p.tick()
     it = p.state.items[first]
     assert it["status"] == "posted" and "x" in it["posted"] and it["attempts"]["threads"] == 3
     assert len(good.calls) == 1
+
+
+def test_half_posted_item_finishes_before_the_next_slot(env, monkeypatch):
+    ig, th = FakePub("instagram"), FakePub("threads", fail=True)
+    p, bot = make(env, [ig, th])
+    p.tick()
+    first = bot.sent[0][0]
+    monkeypatch.setattr(type(p), "slot_open", lambda self, now=None: True)
+    monkeypatch.setattr(type(p), "quiet_now", lambda self, now=None: False)
+    p.state.update(first, status="approved", approved_at=1)
+    p.tick()                                   # instagram goes out, threads fails
+    assert set(p.state.items[first]["posted"]) == {"instagram"} and p.state.items[first]["status"] == "approved"
+    monkeypatch.setattr(type(p), "slot_open", lambda self, now=None: False)   # next slot is hours away
+    th.fail = False
+    p.tick()
+    it = p.state.items[first]
+    assert it["status"] == "posted" and set(it["posted"]) == {"instagram", "threads"}
+    assert len(ig.calls) == 1 and len(p.state["posts"]) == 1   # no double post, counts as one
+
+
+def test_threads_carousel_waits_out_meta_propagation(monkeypatch):
+    from retro.publishers import threads as th
+    from retro.publishers.base import Media, PublishError
+    made = []
+
+    def fake_call(method, url, **params):
+        made.append(params.get("media_type"))
+        if params.get("media_type") == "CAROUSEL" and made.count("CAROUSEL") < 3:
+            raise PublishError("400: {'error_subcode': 4279004, 'error_user_title': 'Invalid carousel children'}")
+        return {"id": f"c{len(made)}", "status": "FINISHED", "permalink": "https://threads/p"}
+
+    monkeypatch.setattr(th, "call", fake_call)
+    monkeypatch.setattr(th.time, "sleep", lambda s: None)
+    t = th.Threads({}, type("V", (), {"token": lambda self, name, env_var: "tok"})())
+    res = t.publish(Media(paths={}, urls={"art": "https://a", "wallpaper": "https://w"}), "caption")
+    assert made.count("CAROUSEL") == 3 and res["url"] == "https://threads/p"
 
 
 def test_slot_logic(env):

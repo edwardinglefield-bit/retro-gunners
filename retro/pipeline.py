@@ -222,11 +222,15 @@ class Pipeline:
                 f"Platforms: {pubs}\nPaused: {s['paused']}")
 
     # ------------------------------------------------------------------ publishing
+    def quiet_now(self, now: float | None = None) -> bool:
+        hour = datetime.fromtimestamp(now or now_ts(), self.tz).hour
+        q0, q1 = self.c("schedule.quiet_hours", [23, 7])
+        return (q0 > q1 and (hour >= q0 or hour < q1)) or (q0 < q1 and q0 <= hour < q1)
+
     def slot_open(self, now: float | None = None) -> bool:
         now = now or now_ts()
         local = datetime.fromtimestamp(now, self.tz)
-        q0, q1 = self.c("schedule.quiet_hours", [23, 7])
-        if (q0 > q1 and (local.hour >= q0 or local.hour < q1)) or (q0 < q1 and q0 <= local.hour < q1):
+        if self.quiet_now(now):
             return False
         today = [t for t in self.state["posts"] if datetime.fromtimestamp(t, self.tz).date() == local.date()]
         if len(today) >= self.c("schedule.posts_per_day", 3):
@@ -245,7 +249,11 @@ class Pipeline:
 
     def publish_due(self):
         queue = sorted(self.state.by_status("approved"), key=lambda i: i.get("approved_at", 0))
-        if not queue or not self.slot_open():
+        if not queue:
+            return
+        # A post that's already live on one platform finishes on the others right away (not at night);
+        # anything else waits for its slot.
+        if self.quiet_now() if queue[0]["posted"] else not self.slot_open():
             return
         if not self.publishers:
             self.notify_once("no-publishers", "An item is approved but no social accounts are configured yet "

@@ -36,6 +36,18 @@ class Threads(Publisher):
             time.sleep(6)
         raise PublishError("threads container not ready in time")
 
+    def _carousel(self, uid: str, children: list[str], caption: str) -> dict:
+        """Children report FINISHED a little before every Threads server can see them, so the first try
+        can fail with 'Invalid carousel children' (subcode 4279004). Give it a minute before giving up."""
+        for wait in (0, 10, 20, 30):
+            time.sleep(wait)
+            try:
+                return call("POST", f"{BASE}/{uid}/threads", media_type="CAROUSEL", children=",".join(children),
+                            text=caption, access_token=self.token)
+            except PublishError as e:
+                if "4279004" not in str(e) or wait == 30:
+                    raise
+
     def publish(self, media: Media, caption: str, progress: dict | None = None) -> dict:
         prog = progress if progress is not None else {}
         if prog.get("id"):
@@ -48,8 +60,7 @@ class Threads(Publisher):
             children.append(c["id"])
         for cid in children:
             self._wait(cid)
-        car = call("POST", f"{BASE}/{uid}/threads", media_type="CAROUSEL", children=",".join(children),
-                   text=caption, access_token=self.token)
+        car = self._carousel(uid, children, caption)
         self._wait(car["id"])
         pub = call("POST", f"{BASE}/{uid}/threads_publish", creation_id=car["id"], access_token=self.token)
         prog["id"] = pub["id"]
