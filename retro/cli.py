@@ -70,7 +70,10 @@ def cmd_doctor(args):
         hook = p.bot._call("getWebhookInfo") or {}
         if hook.get("url"):   # a webhook steals every update from getUpdates
             raise RuntimeError(f"a webhook is set ({hook['url'][:60]}), so taps never reach the pipeline")
-        return "@" + me.get("username", "?") + f", {hook.get('pending_update_count', 0)} taps/messages waiting" + (
+        held = p.bot.updates()   # a peek: never deletes anything
+        if held is None:
+            raise RuntimeError("couldn't read updates from Telegram (getUpdates failed; see the log above)")
+        return "@" + me.get("username", "?") + f", {len(held)} taps/messages held for the pipeline" + (
             "" if p.bot.owner else " (TELEGRAM_OWNER_ID not set: message the bot, it will tell you your id)")
 
     check("Telegram", tg)

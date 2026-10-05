@@ -31,7 +31,6 @@ class State:
         else:
             self.d = {}
         self.d.setdefault("items", {})
-        self.d.setdefault("telegram_offset", 0)
         self.d.setdefault("generations", [])   # timestamps of image generations
         self.d.setdefault("posts", [])         # timestamps of published posts
         self.d.setdefault("last_discovery", 0)

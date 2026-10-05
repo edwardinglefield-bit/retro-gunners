@@ -121,10 +121,17 @@ class Pipeline:
     def handle_updates(self):
         if not self.bot.enabled:
             return
-        ups = self.bot.updates(self.state["telegram_offset"])
-        log.info("telegram: %d new updates", len(ups))
-        for u in ups:
-            self.state.set("telegram_offset", u["update_id"] + 1)
+        ups = self.bot.updates()
+        if ups is None:
+            self.notify_once("tg-read", "⚠️ I couldn't read your taps and messages from Telegram on this run. "
+                                        "If it keeps happening, run the doctor check in GitHub Actions.", 6)
+            return
+        handled = list(self.state.d.get("tg_handled") or [])
+        before = set(handled)
+        fresh = [u for u in ups if u["update_id"] not in before]
+        log.info("telegram: %d held, %d new %s", len(ups), len(fresh), [u["update_id"] for u in fresh][:20])
+        for u in fresh:
+            handled.append(u["update_id"])
             try:
                 if "callback_query" in u:
                     self.on_callback(u["callback_query"])
@@ -132,6 +139,13 @@ class Pipeline:
                     self.on_message(u["message"])
             except Exception as e:  # never let one bad update block the queue
                 log.exception("update failed: %s", e)
+        self.state.set("tg_handled", handled[-500:])
+        # Clear only what an earlier, already-saved run handled (and nothing numbered past a new one). This
+        # run's batch comes back next time and is skipped as handled, so a failed save loses nothing.
+        floor = min((u["update_id"] for u in fresh), default=float("inf"))
+        old = [u["update_id"] for u in ups if u["update_id"] in before and u["update_id"] < floor]
+        if old:
+            self.bot.confirm(max(old))
 
     def on_callback(self, cb: dict):
         chat = (cb.get("message") or {}).get("chat", {}).get("id") or cb["from"]["id"]

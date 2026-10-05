@@ -39,9 +39,14 @@ class FakeBot:
 
     enabled = True
 
-    def updates(self, offset):
-        q, self.queue = self.queue, []
-        return q
+    def updates(self):
+        # like Telegram: everything stays held until confirmed
+        self.held = getattr(self, "held", []) + self.queue
+        self.queue = []
+        return list(self.held)
+
+    def confirm(self, upto):
+        self.held = [u for u in self.held if u["update_id"] > upto]
 
     def send_preview(self, item, path, caption):
         assert path.exists()
@@ -139,7 +144,7 @@ def test_full_cycle(env, monkeypatch):
     assert p.state.items[first]["status"] == "posted"
     assert set(p.state.items[first]["posted"]) == {"x", "threads", "instagram"}
     assert p.state.items[second]["status"] == "skipped"
-    assert p.state["telegram_offset"] == 3
+    assert p.state["tg_handled"] == [1, 2]
     assert p.state.count_since("posts", 3600) == 1
     p.state.save()
 
@@ -240,6 +245,29 @@ def test_copywriter_cleans_and_keeps_your_note(env, monkeypatch):
     assert mine[0] == "Arteta, title night" and len(mine) == 3
     env.raw["captions"]["writer"] = "off"
     assert copywriter.write(item, env) == []
+
+
+def test_taps_survive_telegram_renumbering_and_read_errors(env):
+    p, bot = make(env, [])
+    p.tick()
+    first, second = bot.sent[0][0], bot.sent[1][0]
+
+    def tap(uid, item):
+        return {"update_id": uid, "callback_query": {"id": f"c{uid}", "data": f"a:{item}", "from": {"id": 42},
+                                                     "message": {"chat": {"id": 42}}}}
+    bot.queue = [tap(964427399, first)]
+    p.tick()
+    assert p.state.items[first]["status"] in ("approved", "posted")
+    bot.queue = [tap(5, second)]          # Telegram's numbering jumped lower: still a new tap
+    p.tick()
+    assert p.state.items[second]["status"] in ("approved", "posted")
+    assert [u["update_id"] for u in bot.held] == [964427399, 5]   # nothing cleared past an unsaved new tap
+    p.tick()
+    assert bot.held == [] and p.state["tg_handled"][-2:] == [964427399, 5]
+
+    bot.updates = lambda: None            # Telegram unreachable / conflict: say so instead of going quiet
+    p.tick()
+    assert any("couldn't read your taps" in t for t in bot.texts)
 
 
 def test_inbox_photo_priority(env):

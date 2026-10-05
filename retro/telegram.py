@@ -90,10 +90,14 @@ class Telegram:
         self._call("answerCallbackQuery", callback_query_id=callback_id, text=text[:190])
 
     # --- incoming ------------------------------------------------------
-    def updates(self, offset: int) -> list[dict]:
-        res = self._call("getUpdates", offset=offset, timeout=0, limit=100,
-                         allowed_updates=["message", "callback_query"])
-        return res or []
+    def updates(self) -> list[dict] | None:
+        """Everything Telegram is still holding for the bot, oldest first; None if the call failed.
+        Asking without an offset never deletes anything, even when Telegram's update numbering jumps."""
+        return self._call("getUpdates", timeout=0, limit=100, allowed_updates=["message", "callback_query"])
+
+    def confirm(self, upto: int):
+        """Tell Telegram everything up to update `upto` is handled, so it stops sending it."""
+        self._call("getUpdates", offset=upto + 1, timeout=0, limit=1, allowed_updates=["message", "callback_query"])
 
     def download_file(self, file_id: str) -> bytes | None:
         f = self._call("getFile", file_id=file_id)
