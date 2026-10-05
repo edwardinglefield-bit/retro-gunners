@@ -121,7 +121,9 @@ class Pipeline:
     def handle_updates(self):
         if not self.bot.enabled:
             return
-        for u in self.bot.updates(self.state["telegram_offset"]):
+        ups = self.bot.updates(self.state["telegram_offset"])
+        log.info("telegram: %d new updates", len(ups))
+        for u in ups:
             self.state.set("telegram_offset", u["update_id"] + 1)
             try:
                 if "callback_query" in u:
